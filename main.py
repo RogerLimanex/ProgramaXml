@@ -8,10 +8,10 @@ from tkinter import ttk, messagebox
 PASTA_INTEGRAR = r"D:\Programa xml\cte\integrar"
 PASTA_PROCESSADOS = r"D:\Programa xml\cte\processados"
 PASTA_BACKUP = r"D:\Programa xml\cte\backup"
+LOG_FILE = "log_processamento.txt"
 
 # Variável de controle para cancelamento
 cancelar_processo = False
-
 
 def modificar_xml():
     global cancelar_processo
@@ -26,64 +26,94 @@ def modificar_xml():
     total_arquivos = len(arquivos)
     progresso["maximum"] = total_arquivos
 
-    for index, arquivo in enumerate(arquivos, start=1):
-        if cancelar_processo:
-            label_progresso["text"] = "Processo cancelado!"
-            progresso["value"] = 0
-            return
+    arquivos_alterados = []
+    arquivos_nao_alterados = []
 
-        caminho_arquivo = os.path.join(PASTA_INTEGRAR, arquivo)
+    with open(LOG_FILE, "w", encoding="utf-8") as log:
+        log.write("Início do processamento dos XMLs\n")
+        log.write(f"Total de arquivos: {total_arquivos}\n\n")
 
-        try:
-            tree = ET.parse(caminho_arquivo)
-            xml_root = tree.getroot()  # Usando xml_root para evitar conflitos
-            ns = {'cte': 'http://www.portalfiscal.inf.br/cte'}
+        for index, arquivo in enumerate(arquivos, start=1):
+            if cancelar_processo:
+                label_progresso["text"] = "Processo cancelado!"
+                progresso["value"] = 0
+                return
 
-            alterado = False  # Flag para verificar se o XML foi modificado
+            caminho_arquivo = os.path.join(PASTA_INTEGRAR, arquivo)
 
-            # Modificando CFOP
-            cfop_element = xml_root.find('.//cte:CFOP', ns)
-            if cfop_element is not None and entrada_cfop.get():
-                cfop_element.text = entrada_cfop.get()
-                alterado = True
+            try:
+                tree = ET.parse(caminho_arquivo)
+                xml_root = tree.getroot()
+                ns = {'cte': 'http://www.portalfiscal.inf.br/cte'}
 
-            # Modificando Transportadora
-            transportadora = xml_root.find('.//cte:transporta', ns)
-            if transportadora is not None:
-                for tag, entry in entradas.items():
-                    element = transportadora.find(f'cte:{tag}', ns)
+                alterado = False
+
+                # Dicionário com mapeamento das tags e seus respectivos campos de entrada
+                campos_xml = {
+                    "CFOP": entrada_cfop,
+                    "CNPJ": entradas["CNPJ"],
+                    "IE": entradas["IE"],
+                    "xNome": entradas["xNome"],
+                    "xFant": entradas["xFant"],
+                    "xLgr": entradas["xLgr"],
+                    "nro": entradas["nro"],
+                    "xBairro": entradas["xBairro"],
+                    "cMun": entradas["cMun"],
+                    "xMun": entradas["xMun"],
+                    "CEP": entradas["CEP"],
+                    "UF": entradas["UF"],
+                    "fone": entradas["fone"]
+                }
+
+                # Modificar os valores no XML
+                for tag, entry in campos_xml.items():
+                    element = xml_root.find(f".//cte:{tag}", ns)
                     if element is not None and entry.get():
                         element.text = entry.get()
                         alterado = True
 
-            # Alterando Local de Entrega
-            local_entrega_element = xml_root.find(".//cte:ObsCont[@xCampo='LocalDeEntrega']/cte:xTexto", ns)
-            if local_entrega_element is not None and entrada_local_entrega.get():
-                local_entrega_element.text = entrada_local_entrega.get()
-                alterado = True
+                # Alterando Local de Entrega
+                obs_cont_elements = xml_root.findall(".//cte:ObsCont", ns)
+                for obs in obs_cont_elements:
+                    if obs.get("xCampo") == "LocalDeEntrega":
+                        local_entrega_element = obs.find("cte:xTexto", ns)
+                        if local_entrega_element is not None and entrada_local_entrega.get():
+                            local_entrega_element.text = entrada_local_entrega.get()
+                            alterado = True
 
-            # Criando diretórios caso não existam
-            os.makedirs(PASTA_BACKUP, exist_ok=True)
-            os.makedirs(PASTA_PROCESSADOS, exist_ok=True)
+                # Criando diretórios caso não existam
+                os.makedirs(PASTA_BACKUP, exist_ok=True)
+                os.makedirs(PASTA_PROCESSADOS, exist_ok=True)
 
-            # Mover para backup
-            shutil.move(caminho_arquivo, os.path.join(PASTA_BACKUP, f"backup_{arquivo}"))
+                # Mover para backup
+                shutil.move(caminho_arquivo, os.path.join(PASTA_BACKUP, f"backup_{arquivo}"))
 
-            if alterado:
-                # Salvar arquivo modificado na pasta processados
                 novo_caminho = os.path.join(PASTA_PROCESSADOS, arquivo)
-                tree.write(novo_caminho, encoding="utf-8", xml_declaration=True)
 
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao processar {arquivo}: {str(e)}")
-            continue
+                if alterado:
+                    # Salvar arquivo modificado na pasta processados
+                    tree.write(novo_caminho, encoding="utf-8", xml_declaration=True)
+                    arquivos_alterados.append(arquivo)
+                    log.write(f"[ALTERADO] {arquivo}\n")
+                else:
+                    arquivos_nao_alterados.append(arquivo)
+                    shutil.copy(os.path.join(PASTA_BACKUP, f"backup_{arquivo}"), novo_caminho)
+                    log.write(f"[NÃO ALTERADO] {arquivo}\n")
 
-        # Atualizando barra de progresso e contador
-        progresso["value"] = index
-        label_progresso["text"] = f"Processando {index}/{total_arquivos} arquivos..."
-        janela.update_idletasks()  # Correção aqui!
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao processar {arquivo}: {str(e)}")
+                log.write(f"[ERRO] {arquivo}: {str(e)}\n")
+                continue
 
-    messagebox.showinfo("Sucesso", f"Processamento concluído! {total_arquivos} arquivos alterados.")
+            # Atualizando barra de progresso e contador
+            progresso["value"] = index
+            label_progresso["text"] = f"Processando {index}/{total_arquivos} arquivos..."
+            janela.update_idletasks()
+
+        log.write("\nProcessamento concluído.\n")
+
+    mensagem_final = f"Processamento concluído!\n\nAlterados: {len(arquivos_alterados)}\nNão Alterados: {len(arquivos_nao_alterados)}"
+    messagebox.showinfo("Sucesso", mensagem_final)
 
 
 def cancelar_processo_xml():
@@ -94,10 +124,10 @@ def cancelar_processo_xml():
 
 
 # Criando interface gráfica
-janela = tk.Tk()  # Alterado de root para janela
+janela = tk.Tk()
 janela.title("Alteração de XML de Notas Fiscais")
 janela.geometry("500x750")
-janela.configure(bg="#121212")  # Fundo escuro
+janela.configure(bg="#121212")
 
 # Estilo moderno
 style = ttk.Style()
@@ -114,7 +144,7 @@ entrada_cfop.pack(pady=2)
 ttk.Label(janela, text="--- Dados da Transportadora ---", font=("Arial", 10, "bold")).pack(pady=5)
 
 campos_transportadora = {
-    "CNPJ": "cnpj", "IE": "ie", "Razão Social": "xNome", "Nome Fantasia": "xFant",
+    "CNPJ": "CNPJ", "IE": "IE", "Razão Social": "xNome", "Nome Fantasia": "xFant",
     "Logradouro": "xLgr", "Número": "nro", "Bairro": "xBairro",
     "Código Município": "cMun", "Município": "xMun", "CEP": "CEP",
     "UF": "UF", "Telefone": "fone"
