@@ -14,6 +14,7 @@ LOG_FILE = "log_processamento.txt"
 # Variável de controle para cancelamento
 cancelar_processo = False
 
+
 def modificar_xml():
     global cancelar_processo
     cancelar_processo = False
@@ -120,11 +121,13 @@ def modificar_xml():
     mensagem_final = f"Processamento concluído!\n\nAlterados: {len(arquivos_alterados)}\nNão Alterados: {len(arquivos_nao_alterados)}"
     messagebox.showinfo("Sucesso", mensagem_final)
 
+
 def cancelar_processo_xml():
     global cancelar_processo
     cancelar_processo = True
     label_progresso["text"] = "Cancelando processo..."
     janela.update_idletasks()
+
 
 # Criando interface gráfica
 janela = tk.Tk()
@@ -189,6 +192,5 @@ frame_botoes.pack(pady=10)
 
 ttk.Button(frame_botoes, text="Alterar XML", command=modificar_xml).pack(side="left", padx=5)
 ttk.Button(frame_botoes, text="Cancelar", command=cancelar_processo_xml).pack(side="left", padx=5)
-
 
 janela.mainloop()
